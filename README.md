@@ -8,9 +8,9 @@ sessions: tapping one opens it with full history, attachments, model selection a
 ### How it works
 
 ```
-phone ── Tailscale (HTTPS) ──> dsh-tsnet.exe ──> gateway 127.0.0.1:19390 ──> DSH 127.0.0.1:19387
-                               (node dsh-pc,      (this plugin)
-                                WhoIs = account)
+phone -> Tailscale (HTTPS) -> dsh-tsnet.exe -> gateway 127.0.0.1:19390 -> DSH 127.0.0.1:19387
+                              (node dsh-pc,    (this plugin)
+                               WhoIs = account)
 ```
 
 - **`embedded` mode (default on Windows):** the plugin runs `bin/dsh-tsnet.exe`, an embedded Tailscale
