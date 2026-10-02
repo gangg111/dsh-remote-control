@@ -1,67 +1,74 @@
 ### dsh-remote-control
 
-Zdalne sterowanie DeepSeek Harness (aplikacja desktopowa albo `dsh web`) z telefonu przez Tailscale.
-Na telefonie sesje komputera pokazuje ekran **Code** z wtyczki `dsh-code` (apka DeepSeek-Harness-Mobile):
-dotknięcie sesji otwiera ją z pełną historią, załącznikami, wyborem modelu i zatrzymywaniem.
+Remote control for DeepSeek Harness (the desktop app or `dsh web`) from your phone over Tailscale.
+On the phone, the **Code** screen of the `dsh-code` plugin in
+[DeepSeek-Harness-Mobile](https://github.com/gangg111/DeepSeek-Harness-Mobile) lists the computer's
+sessions: tapping one opens it with full history, attachments, model selection and a stop button.
 
-### Jak to działa
+### How it works
 
 ```
-telefon ── Tailscale (HTTPS) ──> dsh-tsnet.exe ──> brama 127.0.0.1:19390 ──> DSH 127.0.0.1:19387
-                                 (węzeł dsh-pc,     (ta wtyczka)
-                                  WhoIs = konto)
+phone ── Tailscale (HTTPS) ──> dsh-tsnet.exe ──> gateway 127.0.0.1:19390 ──> DSH 127.0.0.1:19387
+                               (node dsh-pc,      (this plugin)
+                                WhoIs = account)
 ```
 
-- **Tryb `embedded` (domyślny na Windows):** wtyczka uruchamia `bin/dsh-tsnet.exe`, wbudowany węzeł
-  Tailscale (biblioteka `tsnet`). Nie trzeba instalować Tailscale, nie jest zajmowany systemowy VPN
-  i nie są potrzebne uprawnienia administratora. Węzeł dołącza do Twojej sieci jako `dsh-pc` i sam
-  wystawia HTTPS z certyfikatem Tailscale.
-- **Tryb `system`:** zainstalowany Tailscale i `tailscale serve --https=443` (ustawiane automatycznie,
-  nigdy `funnel`).
-- Tożsamość wywołującego w trybie `embedded` pochodzi z `WhoIs` połączenia Tailscale, a do bramy idzie
-  z sekretem losowanym przy każdym starcie. Proces na tym komputerze, który nie zna sekretu, dostaje 403.
-- Wpuszczany jest tylko właściciel węzła (albo lista `allowedLogins`).
-- Żądania z obcych stron (`sec-fetch-site: cross-site`, obcy `Origin`) są odrzucane, zanim brama
-  cokolwiek przepisze. Dopiero potem `Host`/`Origin` zmieniają się na adres pętli zwrotnej, więc zapora
-  DSH przed DNS rebinding działa bez zmian.
-- Logowanie do DSH: brama wymienia token startowy na ciasteczko sesji po stronie komputera
-  (oficjalne `ctx.connection.authenticatedUrl`). Token nie trafia do telefonu, ciasteczko dostaje `Secure`.
-- API dla telefonu (`/__remote/api/info`, `sessions`, `workspaces`, `POST sessions`) jest za tą samą kontrolą.
-- Część przeglądarkowa otwiera sesję wskazaną w adresie `?dshOpen=<id>` (`ctx.uiWorkspace.openSession`).
+- **`embedded` mode (default on Windows):** the plugin runs `bin/dsh-tsnet.exe`, an embedded Tailscale
+  node (the `tsnet` library). No Tailscale install, no system VPN and no administrator rights are
+  needed. The node joins your tailnet as `dsh-pc` and serves HTTPS with a Tailscale certificate.
+- **`system` mode:** uses an installed Tailscale and `tailscale serve --https=443` (configured
+  automatically, never `funnel`).
+- In `embedded` mode the caller's identity comes from `WhoIs` on the Tailscale connection and reaches
+  the gateway together with a secret generated on every start. Any local process that does not know
+  the secret gets 403.
+- Only the node owner (or the `allowedLogins` list) is let in.
+- Cross-site requests (`sec-fetch-site: cross-site`, foreign `Origin`) are rejected before the gateway
+  rewrites anything. Only then are `Host`/`Origin` rewritten to loopback, so the DSH DNS-rebinding
+  fence keeps working unchanged.
+- DSH login: the gateway exchanges the launch token for a session cookie on the computer side
+  (the official `ctx.connection.authenticatedUrl`). The token never reaches the phone, and the cookie
+  gets `Secure`.
+- The phone API (`/__remote/api/info`, `sessions`, `workspaces`, `POST sessions`) sits behind the
+  same checks. `info` returns `service: "dsh-remote-control"`, which the phone uses to discover the
+  computer automatically.
+- The browser part opens the session given in `?dshOpen=<id>` (`ctx.uiWorkspace.openSession`).
 
-### Instalacja
+### Installation
 
-1. W DSH na komputerze: Pluginy, Dodaj plugin z GitHuba: `gangg111/dsh-remote-control`.
-2. Przy pierwszym starcie otworzy się przeglądarka na stronie logowania Tailscale. Zaloguj się tym samym
-   kontem co na telefonie i potwierdź urządzenie `dsh-pc`. Link jest też w `~/.dsh/remote-control.json`
-   (pole `loginURL`). Logowanie jest jednorazowe: stan węzła zostaje w `~/.dsh/remote-control/tsnet`.
-3. W panelu Tailscale (https://login.tailscale.com/admin/dns) włącz MagicDNS i HTTPS Certificates.
-4. Na telefonie ekran Code sam znajdzie komputer w sieci Tailscale. Ręcznie: Dodaj urządzenie i adres
-   z pola `url` w `~/.dsh/remote-control.json` (np. `dsh-pc.tail1234.ts.net`).
+1. In DSH on the computer: Plugins, Add plugin from GitHub: `gangg111/dsh-remote-control`.
+2. On first start a browser opens the Tailscale login page. Sign in with the same account as on the
+   phone and approve the `dsh-pc` device. The link is also in `~/.dsh/remote-control.json`
+   (`loginURL`). Login is one-time: the node state stays in `~/.dsh/remote-control/tsnet`.
+3. In the Tailscale admin console (https://login.tailscale.com/admin/dns) enable MagicDNS and
+   HTTPS Certificates.
+4. On the phone the Code screen finds the computer in the tailnet by itself. Manually: Add device and
+   enter the address from `url` in `~/.dsh/remote-control.json` (e.g. `dsh-pc.tail1234.ts.net`).
 
-### Ustawienia (wiersz `remote-control` w `cordis.patch.yml` profilu)
+### Settings (the `remote-control` row in the profile's `cordis.patch.yml`)
 
-| Pole | Domyślnie | Znaczenie |
+| Field | Default | Meaning |
 |---|---|---|
-| `mode` | `embedded` na Windows z `bin/dsh-tsnet.exe`, inaczej `system` | Sposób wystawienia bramy |
-| `hostname` | `dsh-pc` | Nazwa urządzenia w sieci Tailscale (tryb `embedded`) |
-| `port` | `19390` | Port bramy na 127.0.0.1 |
-| `allowedLogins` | `[]` | Konta Tailscale z dostępem; pusta lista = tylko właściciel węzła |
-| `openBrowser` | `true` | Czy otwierać przeglądarkę z linkiem logowania |
-| `httpsPort` | `443` | Port HTTPS w `tailscale serve` (tryb `system`) |
-| `manageServe` | `true` | Czy ustawiać `tailscale serve` (tryb `system`) |
+| `mode` | `embedded` on Windows with `bin/dsh-tsnet.exe`, otherwise `system` | How the gateway is exposed |
+| `hostname` | `dsh-pc` | Device name in the tailnet (`embedded` mode) |
+| `port` | `19390` | Gateway port on 127.0.0.1 |
+| `allowedLogins` | `[]` | Tailscale accounts with access; empty list = node owner only |
+| `openBrowser` | `true` | Whether to open the browser with the login link |
+| `httpsPort` | `443` | HTTPS port for `tailscale serve` (`system` mode) |
+| `manageServe` | `true` | Whether to configure `tailscale serve` (`system` mode) |
 
-### Diagnostyka
+### Troubleshooting
 
-`~/.dsh/remote-control.json`: `mode`, `backendState` (`NeedsLogin`, `Running`), `loginURL`, `url`, `owner`, `error`.
+`~/.dsh/remote-control.json`: `mode`, `backendState` (`NeedsLogin`, `Running`), `loginURL`, `url`,
+`owner`, `cert`, `error`.
 
-- `NeedsLogin`: otwórz `loginURL` i zaloguj się.
-- `error` o HTTPS: włącz HTTPS Certificates w panelu Tailscale.
-- 403 „Konto … nie ma dostępu”: telefon zalogowany innym kontem Tailscale niż komputer.
+- `NeedsLogin`: open `loginURL` and sign in.
+- `cert.ok: false` or a TLS error on the phone: enable HTTPS Certificates in the Tailscale admin console.
+- 403 for your account: the phone is signed in to a different Tailscale account than the computer.
+- Event log of the embedded node: `~/.dsh/remote-control/dsh-tsnet.log`.
 
-### Budowa dsh-tsnet.exe
+### Building dsh-tsnet.exe
 
-Źródło w `tsnet/` (Go, `tailscale.com` przypięte w `go.mod`). Po aktualizacji Tailscale:
+Source in `tsnet/` (Go, `tailscale.com` pinned in `go.mod`). After updating Tailscale:
 
 ```
 cd tsnet
@@ -69,14 +76,14 @@ go get tailscale.com@latest && go mod tidy
 go build -trimpath -ldflags "-s -w -H windowsgui" -o ..\bin\dsh-tsnet.exe .
 ```
 
-`-H windowsgui` (podsystem GUI) sprawia, że proces uruchamiany przez DSH nie otwiera okna konsoli.
+`-H windowsgui` (GUI subsystem) keeps the process started by DSH from opening a console window.
 
-### Testy
+### Tests
 
-`node --test`: brama (tożsamość, sekret, CSRF, logowanie, WebSocket), API, nadzór nad dsh-tsnet,
-parsowanie Tailscale CLI. Fałszywy serwer DSH odtwarza zachowanie 0.1.7-rc.2.
+`node --test`: gateway (identity, secret, CSRF, login, WebSocket), API, dsh-tsnet supervision and
+Tailscale CLI parsing. A fake DSH server reproduces the behaviour of 0.1.7-rc.2.
 
-### Licencja
+### License
 
-MIT (plik `LICENSE`). `bin/dsh-tsnet.exe` zawiera bibliotekę Tailscale (BSD-3-Clause) i Go
-(BSD-3-Clause), patrz `THIRD_PARTY_NOTICES.md`.
+MIT (see `LICENSE`). `bin/dsh-tsnet.exe` includes Tailscale (BSD-3-Clause) and Go (BSD-3-Clause),
+see `THIRD_PARTY_NOTICES.md`.

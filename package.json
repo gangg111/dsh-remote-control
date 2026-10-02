@@ -1,7 +1,7 @@
 {
   "name": "dsh-remote-control",
   "version": "0.1.2",
-  "description": "Zdalne sterowanie DeepSeek Harness z telefonu przez Tailscale: wbudowany węzeł tsnet, brama tylko na 127.0.0.1, wejście wyłącznie dla właściciela węzła.",
+  "description": "Remote control for DeepSeek Harness from your phone over Tailscale: embedded tsnet node, gateway on 127.0.0.1 only, access for the node owner only.",
   "type": "module",
   "main": "index.js",
   "exports": {
