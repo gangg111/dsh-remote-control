@@ -1,0 +1,59 @@
+{
+  "name": "dsh-remote-control",
+  "version": "0.1.2",
+  "description": "Zdalne sterowanie DeepSeek Harness z telefonu przez Tailscale: wbudowany węzeł tsnet, brama tylko na 127.0.0.1, wejście wyłącznie dla właściciela węzła.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "bin",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "remote-control",
+    "tailscale",
+    "tsnet",
+    "mobile"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gangg111/dsh-remote-control.git"
+  },
+  "engines": {
+    "dsh": ">=0.1.7-rc.2",
+    "node": ">=22"
+  },
+  "dsh": {
+    "compatibility": {
+      "dshReleases": {
+        "0.1.7-rc.2": "compatible"
+      }
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  }
+}

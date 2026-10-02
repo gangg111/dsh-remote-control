@@ -1,0 +1,10 @@
+# dsh-remote-control: brama dla telefonu przez Tailscale.
+# Ustawienia nadpisuje sie w cordis.patch.yml profilu, adresujac wiersz po id: remote-control.
+# mode: embedded (wbudowany dsh-tsnet, domyslnie na Windows) albo system (zainstalowany Tailscale).
+- insert:
+    - id: remote-control
+      name: dsh-remote-control
+      config:
+        hostname: dsh-pc
+        port: 19390
+        allowedLogins: []
