@@ -75,6 +75,17 @@ test('info: znacznik uslugi do wykrywania komputera przez telefon', async () => 
   assert.equal(typeof r.json.name, 'string')
 })
 
+test('sesje: rozgalezienie (rodzic bez origin) jest widoczne, podagent nie', async () => {
+  const { services } = fakeServices()
+  const list = services.sessionController.list
+  services.sessionController.list = async () => {
+    const r = await list()
+    return { items: [...r.items, { sessionId: 'fork', updatedAt: 500, running: false, cwd: 'C:\\proj\\alpha', parentSessionId: 's1' }] }
+  }
+  const r = await call(createApi({ get: (n) => services[n] }), 'GET', '/__remote/api/sessions')
+  assert.deepEqual(r.json.sessions.map((s) => s.sessionId), ['s1', 's2', 'fork'])
+})
+
 test('sesje: zarchiwizowane nie trafiaja na telefon', async () => {
   const { services } = fakeServices()
   services.workspaceRegistry.archivedSessionIds = ['s2']
