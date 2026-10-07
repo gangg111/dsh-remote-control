@@ -23,6 +23,7 @@ import { createLinkApi } from './lib/link-api.js'
 import { createLinks } from './lib/links.js'
 import { createOutbox } from './lib/outbox.js'
 import * as tailscale from './lib/tailscale.js'
+import { guardTurnStart } from './lib/sync.js'
 import { createDshClient } from './lib/transfer.js'
 
 /** Trasy ikon „Eksportuj na telefon” na serwerze DSH (ta sama sesja co interfejs). */
@@ -32,6 +33,12 @@ export const name = 'dsh-remote-control'
 export const inject = ['connection', 'webServer']
 
 const OWNER_CACHE_MS = 60_000
+/**
+ * Wersje DSH, na ktorych przeszedl test przejecia na prawdziwym DSH. reloadSession i bramka tury
+ * opieraja sie na wnetrzu agenta DSH (licznik tur w `phase`), wiec na innej wersji synchronizacja
+ * jest wylaczona, dopoki test nie przejdzie i wersja nie trafi na te liste.
+ */
+const SYNC_TESTED_DSH = ['0.2.0-rc.2']
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url))
 
 /**
@@ -73,11 +80,27 @@ export function apply(ctx, config = {}) {
   const authenticatedUrl = () => ctx.connection.authenticatedUrl(`http://127.0.0.1:${String(ctx.webServer.port)}`)
   const dsh = createDshClient({ port: () => ctx.webServer.port, authenticatedUrl })
   const links = createLinks(join(home, 'remote-control-links.json'))
-  const linkApi = createLinkApi({ get: (service) => ctx.get(service), links, log })
+  const dshVersion = readDshVersion()
+  const syncEnabled = SYNC_TESTED_DSH.includes(dshVersion)
+  const linkApi = createLinkApi({
+    get: (service) => ctx.get(service), links, log, enabled: syncEnabled,
+    disabledReason: `Synchronizacja sesji nie jest sprawdzona na DSH ${dshVersion ?? '(nieznana wersja)'}; wylaczona do aktualizacji wtyczki.`,
+  })
 
-  // Lustro tylko do odczytu: tura w sesji PC, ktorej wlascicielem jest telefon, jest odrzucana
-  // (to samo robi bramka archiwum DSH); dotyczy kazdego klienta, takze zdalnego.
-  ctx.on('agent/pre-step', (payload, next) => (links.isPcMirror(payload?.agent?.session?.header?.id) ? Promise.resolve({ kind: 'reject' }) : next()))
+  // Bramka tury w sesjach powiazanych (przed zapisem `turn/start`, patrz guardTurnStart):
+  // - lustro: kazda tura jest przerywana (pisze sie na drugim urzadzeniu), dotyczy kazdego klienta;
+  // - wlasciciel: tura z numerem innym niz ostatnia tura w logu + 1 jest przerywana, a powiazanie
+  //   wstrzymane z bledem (licznik agenta jest juz wyrownany, wiec `resume` i ponowne wyslanie dzialaja).
+  ctx.on('agent/status', (payload) => {
+    const stopped = guardTurnStart((service) => ctx.get(service), payload, links.pcRole)
+    if (!stopped || stopped.reason === 'mirror') return
+    const link = links.byPcSession(stopped.sessionId)
+    const message = stopped.reason === 'unknown'
+      ? 'Nieznany stan agenta DSH (zmienione wnetrze DSH); tura przerwana, nic nie zapisano.'
+      : `Tura agenta PC miala numer ${stopped.actual + 1}, a w logu ostatnia jest ${stopped.expected}; tura przerwana, nic nie zapisano.`
+    log.warn(`[dsh-remote-control] ${message}`)
+    if (link) links.pause(link.linkId, message)
+  })
 
   /** Usuwa katalog sesji, ktorej DSH nie przyjal przy kontrolnym odczycie po imporcie. */
   async function removeSession(id) {
@@ -126,8 +149,9 @@ export function apply(ctx, config = {}) {
         dsh,
         emit: (event, payload) => ctx.emit(event, payload),
         removeSession,
-        dshVersion: readDshVersion(),
+        dshVersion,
         linkApi,
+        syncEnabled,
       }),
       log,
     })

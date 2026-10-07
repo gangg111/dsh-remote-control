@@ -68,10 +68,20 @@ phone is the courier.
   wrong pointer. Log-delivery markers are not copied.
 - **Routes** (`lib/link-api.js`): `GET/POST /__remote/api/links`, `GET /links/<id>/events` (PC tail),
   `POST /links/<id>/applied`, `POST /links/<id>/events` (phone tail), `POST /links/<id>/claim`,
-  `POST /links/<id>/claim-confirm`, `DELETE /links/<id>`; every write checks the link `epoch`.
+  `POST /links/<id>/claim-confirm`, `POST /links/<id>/resume`, `DELETE /links/<id>`; every write checks
+  the link `epoch`.
+- **Turn counter** (`reloadSession`, `guardTurnStart` in `lib/sync.js`): a DSH agent reads its turn
+  counter from the log only when it is created, and `Session.append` does not move it, so after a takeover
+  it would reuse a turn number that is already in the log (DSH then refuses to load the session). A plugin
+  cannot dispose a live agent, so `reloadSession` sets the idle agent's counter to the last turn in the
+  log after every appended tail and before the PC becomes the owner. A gate on `agent/status: running`
+  (emitted before `turn/start` is written) stops any turn of a mirror, and any owner turn whose number is
+  not the last logged turn + 1; the link is then paused (`paused` in the link, `POST /links/<id>/resume`).
+  Both rely on agent internals, so sync is enabled only on DSH versions where the takeover test passed
+  (`SYNC_TESTED_DSH` in `index.js`, currently 0.2.0-rc.2); on others the write routes return 503.
 - **On the PC:** the session row icon shows "you write here" or "mirror of the phone"; a mirror has its
-  composer blocked, a "Take over writing here" bar (the phone hands over after finishing its turn; after
-  a minute the PC may take over without it), and an `agent/pre-step` gate that rejects turns.
+  composer blocked and a "Take over writing here" bar (the phone hands over after finishing its turn; after
+  a minute the PC may take over without it). A paused link shows its reason and a "Resume sync" button.
 
 ### Installation
 
