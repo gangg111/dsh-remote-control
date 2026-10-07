@@ -68,7 +68,8 @@ phone is the courier.
   wrong pointer. Log-delivery markers are not copied.
 - **Routes** (`lib/link-api.js`): `GET/POST /__remote/api/links`, `GET /links/<id>/events` (PC tail),
   `POST /links/<id>/applied`, `POST /links/<id>/events` (phone tail), `POST /links/<id>/claim`,
-  `POST /links/<id>/claim-confirm`, `POST /links/<id>/resume`, `DELETE /links/<id>`; every write checks
+  `POST /links/<id>/claim-confirm`, `POST /links/<id>/pause` (the phone's gate stopped an owner
+  turn), `POST /links/<id>/resume`, `DELETE /links/<id>`; every write checks
   the link `epoch`.
 - **Turn counter** (`reloadSession`, `guardTurnStart` in `lib/sync.js`): a DSH agent reads its turn
   counter from the log only when it is created, and `Session.append` does not move it, so after a takeover
