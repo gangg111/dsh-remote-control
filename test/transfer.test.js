@@ -102,6 +102,26 @@ test('import: nowa sesja w domyslnym obszarze, zdarzenia od seq 0, zalaczniki po
   assert.equal(r.skippedSubagents, 1)
 })
 
+test('import rozgalezienia: znaczniki rodzica wskazuja nowa sesje, sesja rozgaleziona z ta sama czescia odziedziczona', async () => {
+  const header = { type: 'session', version: 4, id: 'session-fork', createdAt: 1, cwd: '/x', parentSession: 'session-parent', isSeeded: true, delegationDepth: 0 }
+  const events = [
+    { type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } },
+    { type: 'session-log-deepseek/delivery-accepted', seq: 1, time: 1, data: { sessionId: 'session-parent', sessionFormatVersion: 4, throughSeq: 0 } },
+    { type: 'turn/end', seq: 2, time: 1, data: { turn: 1 } },
+    { type: 'session/end-seed', seq: 3, time: 1, data: { inherited: true } },
+    { type: 'session-log-deepseek/delivery-accepted', seq: 4, time: 1, data: { sessionId: 'session-fork', sessionFormatVersion: 4, throughSeq: 3 } },
+  ]
+  const zip = writeZip([['session.v4.jsonl', [header, ...events].map((l) => JSON.stringify(l)).join('\n') + '\n']])
+  let created
+  const { written, get } = fakeDsh()
+  const persistence = get('sessionPersistence')
+  const services = { ...Object.fromEntries(['workspaceRegistry', 'sessionQuery', 'attachments'].map((n) => [n, get(n)])),
+    sessionPersistence: { create: async (h, opts) => { created = { h, opts }; return persistence.create(h) } } }
+  const r = await importSession((n) => services[n], zip)
+  assert.deepEqual([created.h.isSeeded, created.opts?.inheritedEventCount, 'parentSession' in created.h], [true, 3, false])
+  assert.deepEqual(written.events.filter((e) => e.type.startsWith('session-log')).map((e) => e.data.sessionId), [r.sessionId, r.sessionId])
+})
+
 test('import: wskazany obszar roboczy', async () => {
   const { written, get } = fakeDsh()
   await importSession(get, sampleExport(), { workspaceId: 'w1' })
