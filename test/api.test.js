@@ -75,6 +75,13 @@ test('info: znacznik uslugi do wykrywania komputera przez telefon', async () => 
   assert.equal(typeof r.json.name, 'string')
 })
 
+test('sesje: zarchiwizowane nie trafiaja na telefon', async () => {
+  const { services } = fakeServices()
+  services.workspaceRegistry.archivedSessionIds = ['s2']
+  const r = await call(createApi({ get: (n) => services[n] }), 'GET', '/__remote/api/sessions')
+  assert.deepEqual(r.json.sessions.map((s) => s.sessionId), ['s1'])
+})
+
 test('obszary robocze: nazwa albo ostatni czlon sciezki', async () => {
   const { services } = fakeServices()
   const r = await call(createApi({ get: (n) => services[n] }), 'GET', '/__remote/api/workspaces')
