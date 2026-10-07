@@ -109,7 +109,7 @@ test('cykl powiazania: ogon PC -> telefon, przejecie przez telefon, ogon telefon
   const pc = [...turn(0, 1), ...turn(5, 2)]
   const dsh = fakeDsh({ pc })
   const links = createLinks(join(mkdtempSync(join(tmpdir(), 'rc-links-')), 'links.json'))
-  const api = createLinkApi({ get: dsh.get, links })
+  const api = createLinkApi({ get: dsh.get, links, enabled: true })
   const phone = (m, p, b, q) => call(api.phone, m, p, b, q)
 
   const created = (await phone('POST', '/links', { pcSessionId: 'pc', phoneSessionId: 'tel', owner: 'pc', sharedCount: 5 })).json
@@ -152,11 +152,19 @@ test('cykl powiazania: ogon PC -> telefon, przejecie przez telefon, ogon telefon
 test('przejecie odrzucone, gdy na wlascicielu trwa tura albo lustro nie ma najnowszych zdarzen', async () => {
   const dsh = fakeDsh({ pc: [...turn(0, 1), ...turn(5, 2), { type: 'turn/start', seq: 10, time: 1, data: { turn: 3 } }] })
   const links = createLinks(join(mkdtempSync(join(tmpdir(), 'rc-links-')), 'links.json'))
-  const api = createLinkApi({ get: dsh.get, links })
+  const api = createLinkApi({ get: dsh.get, links, enabled: true })
   const { linkId } = (await call(api.phone, 'POST', '/links', { pcSessionId: 'pc', phoneSessionId: 'tel', owner: 'pc', sharedCount: 5 })).json
   const r = await call(api.phone, 'POST', `/links/${linkId}/claim`, { epoch: 1, phoneLast: 6 })
   assert.equal(r.status, 409)
   assert.match(r.json.error, /tura/)
+})
+
+test('synchronizacja wylaczona domyslnie: trasy zmieniajace stan odpowiadaja 503', async () => {
+  const links = createLinks(join(mkdtempSync(join(tmpdir(), 'rc-links-')), 'links.json'))
+  const api = createLinkApi({ get: fakeDsh({}).get, links })
+  const r = await call(api.phone, 'POST', '/links', { pcSessionId: 'pc', phoneSessionId: 'tel', owner: 'pc', sharedCount: 5 })
+  assert.equal(r.status, 503)
+  assert.equal(links.list().length, 0)
 })
 
 test('rejestracja: walidacja i brak podwojnego powiazania', async () => {
