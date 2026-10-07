@@ -6,7 +6,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createOutbox } from '../lib/outbox.js'
-import { importSession, parseExport, remapAttachments, TransferError } from '../lib/transfer.js'
+import { importSession, parseExport, remapAttachments, sessionModel, TransferError } from '../lib/transfer.js'
 import { readZip } from '../lib/zip.js'
 import { writeZip } from './zip-writer.js'
 
@@ -120,6 +120,50 @@ test('import rozgalezienia: znaczniki rodzica wskazuja nowa sesje, sesja rozgale
   const r = await importSession((n) => services[n], zip)
   assert.deepEqual([created.h.isSeeded, created.opts?.inheritedEventCount, 'parentSession' in created.h], [true, 3, false])
   assert.deepEqual(written.events.filter((e) => e.type.startsWith('session-log')).map((e) => e.data.sessionId), [r.sessionId, r.sessionId])
+})
+
+test('sessionModel: ostatni wybor po ostatnim naglowku zadania, inaczej konfiguracja naglowka', () => {
+  const header = (provider, model, seq) => ({ type: 'request/header', seq, time: 1, data: { header: { config: { provider, model, reasoningEffort: 'max' } }, reason: 'resume' } })
+  assert.deepEqual(sessionModel([header('deepseek-account', 'deepseek-flash', 0)]), { provider: 'deepseek-account', model: 'deepseek-flash' })
+  assert.deepEqual(sessionModel([header('a', 'x', 0), { type: 'model/selection', seq: 1, time: 1, data: { provider: 'b', model: 'y' } }]), { provider: 'b', model: 'y' })
+  assert.deepEqual(sessionModel([{ type: 'model/selection', seq: 0, time: 1, data: { provider: 'b', model: 'y' } }, header('a', 'x', 1)]), { provider: 'a', model: 'x' })
+  assert.equal(sessionModel([{ type: 'turn/start', seq: 0, time: 1, data: {} }]), undefined)
+})
+
+function modelDsh({ providers, defaultSelection, failSelect = false }) {
+  const { written, get } = fakeDsh()
+  const selected = []
+  const services = {
+    ...Object.fromEntries(['sessionPersistence', 'workspaceRegistry', 'sessionQuery', 'attachments'].map((n) => [n, get(n)])),
+    llm: { listProviders: () => Object.keys(providers).map((id) => ({ id })), listModels: async (p) => (providers[p] ?? []).map((id) => ({ id })) },
+    agentDefaultModel: { currentSelection: () => defaultSelection },
+    sessionController: { selectModel: async (r) => { if (failSelect) throw new Error('model/unavailable'); selected.push(r); return { selected: { provider: r.provider, model: r.model } } } },
+  }
+  return { written, selected, get: (n) => services[n] }
+}
+
+function exportWithModel(provider, model) {
+  const header = { type: 'session', version: 4, id: 'session-src', createdAt: 1, cwd: '/x', isSeeded: false, delegationDepth: 0 }
+  const events = [{ type: 'request/header', seq: 0, time: 1, data: { header: { config: { provider, model } }, reason: 'resume' } }]
+  return writeZip([['session.v4.jsonl', [header, ...events].map((l) => JSON.stringify(l)).join('\n') + '\n']])
+}
+
+test('import: model niedostepny na urzadzeniu -> oficjalny selectModel na domyslny, wynik modelChanged', async () => {
+  const dsh = modelDsh({ providers: { 'deepseek-api': ['deepseek-v41-flash'] }, defaultSelection: { provider: 'deepseek-api', model: 'deepseek-v41-flash', reasoningEffort: 'max' } })
+  const r = await importSession(dsh.get, exportWithModel('deepseek-account', 'deepseek-flash'))
+  assert.deepEqual(r.modelChanged, { from: 'deepseek-account/deepseek-flash', to: 'deepseek-api/deepseek-v41-flash' })
+  assert.deepEqual(dsh.selected, [{ sessionId: r.sessionId, provider: 'deepseek-api', model: 'deepseek-v41-flash', reasoningEffort: 'max' }])
+})
+
+test('import: model dostepny -> bez zmiany; blad selectModel nie wywraca importu', async () => {
+  const ok = modelDsh({ providers: { 'deepseek-account': ['deepseek-flash'] }, defaultSelection: { provider: 'deepseek-account', model: 'deepseek-flash' } })
+  assert.equal((await importSession(ok.get, exportWithModel('deepseek-account', 'deepseek-flash'))).modelChanged, null)
+  assert.equal(ok.selected.length, 0)
+  const warnings = []
+  const bad = modelDsh({ providers: { api: ['m'] }, defaultSelection: { provider: 'api', model: 'm' }, failSelect: true })
+  const r = await importSession(bad.get, exportWithModel('konto', 'x'), { log: { warn: (m) => warnings.push(m) } })
+  assert.equal(r.modelChanged, null)
+  assert.match(warnings[0], /model importu/)
 })
 
 test('import: wskazany obszar roboczy', async () => {
