@@ -19,6 +19,8 @@ import { fileURLToPath } from 'node:url'
 import { createApi } from './lib/api.js'
 import { superviseTsnet } from './lib/embedded.js'
 import { createGateway } from './lib/gateway.js'
+import { createLinkApi } from './lib/link-api.js'
+import { createLinks } from './lib/links.js'
 import { createOutbox } from './lib/outbox.js'
 import * as tailscale from './lib/tailscale.js'
 import { createDshClient } from './lib/transfer.js'
@@ -70,6 +72,12 @@ export function apply(ctx, config = {}) {
   const outbox = createOutbox(join(home, 'remote-control-outbox.json'))
   const authenticatedUrl = () => ctx.connection.authenticatedUrl(`http://127.0.0.1:${String(ctx.webServer.port)}`)
   const dsh = createDshClient({ port: () => ctx.webServer.port, authenticatedUrl })
+  const links = createLinks(join(home, 'remote-control-links.json'))
+  const linkApi = createLinkApi({ get: (service) => ctx.get(service), links, log })
+
+  // Lustro tylko do odczytu: tura w sesji PC, ktorej wlascicielem jest telefon, jest odrzucana
+  // (to samo robi bramka archiwum DSH); dotyczy kazdego klienta, takze zdalnego.
+  ctx.on('agent/pre-step', (payload, next) => (links.isPcMirror(payload?.agent?.session?.header?.id) ? Promise.resolve({ kind: 'reject' }) : next()))
 
   /** Usuwa katalog sesji, ktorej DSH nie przyjal przy kontrolnym odczycie po imporcie. */
   async function removeSession(id) {
@@ -97,6 +105,7 @@ export function apply(ctx, config = {}) {
         }
         const m = /^\/outbox\/([0-9a-f-]{36})$/.exec(path)
         if (m && req.method === 'DELETE') return sendJson(res, 200, { removed: outbox.remove(m[1]) })
+        if ((await linkApi.ui(req, res, path)) !== false) return
         return sendJson(res, 404, { error: 'nieznana sciezka' })
       } catch (error) {
         return sendJson(res, error.status ?? 500, { error: String(error?.message ?? error) })
@@ -118,6 +127,7 @@ export function apply(ctx, config = {}) {
         emit: (event, payload) => ctx.emit(event, payload),
         removeSession,
         dshVersion: readDshVersion(),
+        linkApi,
       }),
       log,
     })

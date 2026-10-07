@@ -52,6 +52,26 @@ phone -> Tailscale (HTTPS) -> dsh-tsnet.exe -> gateway 127.0.0.1:19390 -> DSH 12
   back: if this DSH refuses it, the stored copy is removed and the request fails with 422. The title
   is restored through the official rename, which also makes the session appear in the list at once.
   Logs of subagents are not transferred; their results are already part of the main log.
+  A forked session is imported as a fork (inherited part kept, no parent), and a session whose model
+  this device lacks is switched to this device's default model (`modelChanged` in the result).
+
+### Session sync (linked copies)
+
+`info` advertises `capabilities: ["session-sync"]`. A linked pair has one owner (writable) and one
+read-only mirror; the gateway on the PC keeps the link state (`~/.dsh/remote-control-links.json`) and the
+phone is the courier.
+
+- **Tails** (`lib/sync.js`): events after the other side's mark up to the last completed turn, as a ZIP
+  (`tail.jsonl` + media). The mirror appends them through the live session (`Session.append`, which
+  validates every event), never through the stored file. Every reference by event number is remapped
+  through the link's number map; an unknown reference stops the sync with 409 instead of storing a
+  wrong pointer. Log-delivery markers are not copied.
+- **Routes** (`lib/link-api.js`): `GET/POST /__remote/api/links`, `GET /links/<id>/events` (PC tail),
+  `POST /links/<id>/applied`, `POST /links/<id>/events` (phone tail), `POST /links/<id>/claim`,
+  `POST /links/<id>/claim-confirm`, `DELETE /links/<id>`; every write checks the link `epoch`.
+- **On the PC:** the session row icon shows "you write here" or "mirror of the phone"; a mirror has its
+  composer blocked, a "Take over writing here" bar (the phone hands over after finishing its turn; after
+  a minute the PC may take over without it), and an `agent/pre-step` gate that rejects turns.
 
 ### Installation
 
