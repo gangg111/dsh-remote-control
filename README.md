@@ -33,6 +33,26 @@ phone -> Tailscale (HTTPS) -> dsh-tsnet.exe -> gateway 127.0.0.1:19390 -> DSH 12
   computer automatically.
 - The browser part opens the session given in `?dshOpen=<id>` (`ctx.uiWorkspace.openSession`).
 
+### Session transfer (phone and computer)
+
+`info` advertises `capabilities: ["session-transfer"]` and `sessionFormat: 4`.
+
+- **PC to phone:** every session row in the DSH sidebar gets an "Export to phone" icon
+  (`sidebar.workspaces.session.row.action`). It queues the session in an outbox
+  (`~/.dsh/remote-control-outbox.json`); the icon then shows "waiting for the phone", and
+  "received" after the phone confirms. The phone polls:
+  - `GET /__remote/api/outbox` returns the waiting entries `{transferId, sessionId, title, createdAt}`;
+  - `GET /__remote/api/outbox/<transferId>` streams the native DSH export ZIP of that session;
+  - `DELETE /__remote/api/outbox/<transferId>` confirms a successful import (until then the entry stays).
+- **Phone to PC:** `POST /__remote/api/sessions/import` with the native export ZIP as the body
+  (limit 256 MB, optional `?workspaceId=`) returns `{sessionId, title, events, attachments}`.
+- **Import** (`lib/transfer.js`) creates a new session (new id, the original stays on the sender) in the
+  default workspace through `sessionPersistence`, re-saves images and files through `attachments`
+  and rewrites their references, rebinds log-delivery markers to the new id, then reads the session
+  back: if this DSH refuses it, the stored copy is removed and the request fails with 422. The title
+  is restored through the official rename, which also makes the session appear in the list at once.
+  Logs of subagents are not transferred; their results are already part of the main log.
+
 ### Installation
 
 1. In DSH on the computer: Plugins, Add plugin from GitHub: `gangg111/dsh-remote-control`.

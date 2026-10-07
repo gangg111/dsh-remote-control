@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-control",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Remote control for DeepSeek Harness from your phone over Tailscale: embedded tsnet node, gateway on 127.0.0.1 only, access for the node owner only.",
   "type": "module",
   "main": "index.js",
@@ -43,7 +43,8 @@
   "dsh": {
     "compatibility": {
       "dshReleases": {
-        "0.1.7-rc.2": "compatible"
+        "0.1.7-rc.2": "compatible",
+        "0.2.0-rc.2": "compatible"
       }
     },
     "bundle": {
@@ -52,7 +53,8 @@
     "client": {
       "platform": "web",
       "inject": [
-        "@deepseek-ai/dsh-client-ui-workspace"
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-slots"
       ]
     }
   }

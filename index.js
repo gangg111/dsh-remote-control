@@ -12,14 +12,19 @@
  */
 
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createApi } from './lib/api.js'
 import { superviseTsnet } from './lib/embedded.js'
 import { createGateway } from './lib/gateway.js'
+import { createOutbox } from './lib/outbox.js'
 import * as tailscale from './lib/tailscale.js'
+import { createDshClient } from './lib/transfer.js'
+
+/** Trasy ikon „Eksportuj na telefon” na serwerze DSH (ta sama sesja co interfejs). */
+const UI_PREFIX = '/api/dsh-remote-control'
 
 export const name = 'dsh-remote-control'
 export const inject = ['connection', 'webServer']
@@ -62,13 +67,58 @@ export function apply(ctx, config = {}) {
     return ownerLogin !== null && l === ownerLogin
   }
 
+  const outbox = createOutbox(join(home, 'remote-control-outbox.json'))
+  const authenticatedUrl = () => ctx.connection.authenticatedUrl(`http://127.0.0.1:${String(ctx.webServer.port)}`)
+  const dsh = createDshClient({ port: () => ctx.webServer.port, authenticatedUrl })
+
+  /** Usuwa katalog sesji, ktorej DSH nie przyjal przy kontrolnym odczycie po imporcie. */
+  async function removeSession(id) {
+    const root = join(home, 'sessions')
+    for (const project of readdirSync(root, { withFileTypes: true })) {
+      if (!project.isDirectory()) continue
+      const dir = join(root, project.name, id)
+      if (existsSync(dir)) rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: UI_PREFIX,
+    handler: async (req, res) => {
+      const admission = ctx.connection.admit(req)
+      if ('rejection' in admission) return sendJson(res, admission.rejection, { error: 'unauthorized' })
+      const url = new URL(req.url ?? '/', 'http://local')
+      const path = url.pathname.slice(UI_PREFIX.length)
+      try {
+        if (req.method === 'GET' && path === '/outbox') return sendJson(res, 200, { items: outbox.list() })
+        if (req.method === 'POST' && path === '/outbox') {
+          const body = JSON.parse((await readSmallBody(req)) || '{}')
+          return sendJson(res, 200, outbox.add(body.sessionId, body.title))
+        }
+        const m = /^\/outbox\/([0-9a-f-]{36})$/.exec(path)
+        if (m && req.method === 'DELETE') return sendJson(res, 200, { removed: outbox.remove(m[1]) })
+        return sendJson(res, 404, { error: 'nieznana sciezka' })
+      } catch (error) {
+        return sendJson(res, error.status ?? 500, { error: String(error?.message ?? error) })
+      }
+    },
+  }), 'dsh-remote-control: outbox routes')
+
   ctx.effect(() => {
     const gateway = createGateway({
       targetPort: () => ctx.webServer.port,
-      authenticatedUrl: () => ctx.connection.authenticatedUrl(`http://127.0.0.1:${String(ctx.webServer.port)}`),
+      authenticatedUrl,
       admit,
       secret,
-      api: createApi({ get: (service) => ctx.get(service), log }),
+      api: createApi({
+        get: (service) => ctx.get(service),
+        log,
+        outbox,
+        dsh,
+        emit: (event, payload) => ctx.emit(event, payload),
+        removeSession,
+        dshVersion: readDshVersion(),
+      }),
       log,
     })
     let tsnet = null
@@ -152,5 +202,30 @@ export function apply(ctx, config = {}) {
         state.serve = `blad: ${error.message}`
       }
     }
+  }
+}
+
+function sendJson(res, status, body) {
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+  res.end(JSON.stringify(body))
+}
+
+function readSmallBody(req, limit = 16 * 1024) {
+  return new Promise((resolve, reject) => {
+    let data = ''
+    req.setEncoding('utf8')
+    req.on('data', (c) => { data += c; if (data.length > limit) { reject(Object.assign(new Error('za duze zadanie'), { status: 413 })); req.destroy() } })
+    req.on('end', () => resolve(data))
+    req.on('error', reject)
+  })
+}
+
+/** Wersja DSH z runtime.json instalacji (Electron: process.resourcesPath), albo undefined. */
+function readDshVersion() {
+  try {
+    const base = process.resourcesPath ?? ''
+    return JSON.parse(readFileSync(join(base, 'runtime', 'primary-runtime', 'runtime.json'), 'utf8')).desktopVersion
+  } catch {
+    return undefined
   }
 }
