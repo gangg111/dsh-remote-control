@@ -98,6 +98,7 @@ test('import: nowa sesja w domyslnym obszarze, zdarzenia od seq 0, zalaczniki po
   assert.equal(written.events[1].data.content[1].attachment.attachmentId, NEW_IMG)
   assert.ok(written.flushed && written.closed)
   assert.deepEqual(written.attached, [['w2', r.sessionId]])
+  assert.equal(r.attached, true)
   assert.equal(written.emitted[0][0], 'api-session/added')
   assert.equal(r.skippedSubagents, 1)
 })
@@ -164,6 +165,16 @@ test('import: model dostepny -> bez zmiany; blad selectModel nie wywraca importu
   const r = await importSession(bad.get, exportWithModel('konto', 'x'), { log: { warn: (m) => warnings.push(m) } })
   assert.equal(r.modelChanged, null)
   assert.match(warnings[0], /model importu/)
+})
+
+test('import: obszar bez attachSession -> ostrzezenie i attached:false zamiast cichego pominiecia', async () => {
+  const { get } = fakeDsh()
+  const registry = { list: () => [{ id: 'w9', path: 'C:\\x\\default-workspace' }], resolveByPath: async () => undefined }
+  const warnings = []
+  const r = await importSession((n) => (n === 'workspaceRegistry' ? registry : get(n)), sampleExport(), { log: { warn: (m) => warnings.push(m) } })
+  assert.equal(r.attached, false)
+  assert.equal(r.workspaceId, 'w9')
+  assert.match(warnings.join('\n'), /attachSession/)
 })
 
 test('import: wskazany obszar roboczy', async () => {
