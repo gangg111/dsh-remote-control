@@ -43,6 +43,9 @@ phone -> Tailscale (HTTPS) -> dsh-tsnet.exe -> gateway 127.0.0.1:19390 -> DSH 12
   "received" after the phone confirms. The phone polls:
   - `GET /__remote/api/outbox` returns the waiting entries `{transferId, sessionId, title, createdAt}`;
   - `GET /__remote/api/outbox/<transferId>` streams the native DSH export ZIP of that session;
+  - `GET /__remote/api/outbox/<transferId>/files` returns the project files the agent changed in that
+    session, as a separate small ZIP (`manifest.json` + `tree/<relative path>`), so the session log and
+    media keep streaming untouched (capability `workspace-files`, see below);
   - `DELETE /__remote/api/outbox/<transferId>` confirms a successful import (until then the entry stays).
 - **Phone to PC:** `POST /__remote/api/sessions/import` with the native export ZIP as the body
   (limit 256 MB, optional `?workspaceId=`) returns `{sessionId, title, events, attachments}`.
@@ -54,6 +57,25 @@ phone -> Tailscale (HTTPS) -> dsh-tsnet.exe -> gateway 127.0.0.1:19390 -> DSH 12
   Logs of subagents are not transferred; their results are already part of the main log.
   A forked session is imported as a fork (inherited part kept, no parent), and a session whose model
   this device lacks is switched to this device's default model (`modelChanged` in the result).
+
+### Project files with a session (phase 1)
+
+So the receiving agent continues on the same files instead of starting over, an export can carry the
+project files alongside the session. `info` advertises `capabilities: ["workspace-files"]`.
+
+- **Shared module** (`lib/workspace-files.js`, the phone vendors an unchanged copy): `agentEditedPaths`
+  reads the paths the agent changed through `edit` / `write` / `apply_patch`; `collectFiles` hashes them
+  (sha256), applies the exclusions and size limits, and builds `manifest.json`; `applyWorkspaceZip`
+  writes the files on the other side (atomic temp + rename), keeping an older differing file beside the
+  new one as a conflict copy so nothing is lost; `diffAgainstBase` lists changed, new and deleted files
+  against a base manifest (phase 2, the return trip); `safeRelSegments` rejects absolute paths, `..`,
+  drive letters and Windows reserved names.
+- **Phase 1 scope** is `agent`: only files the agent changed through its tools, inside the session's
+  `cwd`. The whole-project scope and the return trip (diff against the manifest) are phase 2.
+- **Exclusions** (both directions): build and dependency directories (`.git`, `node_modules`, `bin`,
+  `obj`, `build`, `dist`, `target`, `.venv`, …) and files that are useless on the other side or
+  sensitive (`.exe`, `.dll`, `.pfx`, `.key`, `.pem`, `.env`, `.keystore`, …). Excluded files go on the
+  manifest's `skipped` list with a reason, never dropped silently. Size and count limits apply.
 
 ### Session sync (linked copies)
 
