@@ -17,6 +17,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createApi } from './lib/api.js'
+import { installArchiveGuard } from './lib/archive-guard.js'
 import { superviseTsnet } from './lib/embedded.js'
 import { createGateway } from './lib/gateway.js'
 import { createLinkApi } from './lib/link-api.js'
@@ -86,6 +87,9 @@ export function apply(ctx, config = {}) {
     get: (service) => ctx.get(service), links, log, enabled: syncEnabled,
     disabledReason: `Synchronizacja sesji nie jest sprawdzona na DSH ${dshVersion ?? '(nieznana wersja)'}; wylaczona do aktualizacji wtyczki.`,
   })
+
+  // Archiwizacja sesji powiazanej: okno DSH pokazuje synchronizacje jako prace w toku, a zatrzymanie ja odlacza.
+  installArchiveGuard(ctx, links, log)
 
   // Bramka tury w sesjach powiazanych (przed zapisem `turn/start`, patrz guardTurnStart):
   // - lustro: kazda tura jest przerywana (pisze sie na drugim urzadzeniu), dotyczy kazdego klienta;
