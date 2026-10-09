@@ -71,7 +71,14 @@ project files alongside the session. `info` advertises `capabilities: ["workspac
   against a base manifest (phase 2, the return trip); `safeRelSegments` rejects absolute paths, `..`,
   drive letters and Windows reserved names.
 - **Phase 1 scope** is `agent`: only files the agent changed through its tools, inside the session's
-  `cwd`. The whole-project scope is still to come.
+  `cwd`.
+- **Whole project** (capability `workspace-files-project`): the phone adds `?scope=project` to
+  `GET /outbox/<id>/files` (export) or `GET /links/<id>/files` (pull after a takeover). The export walks
+  the whole session directory; the pull sends every file that differs from the sum store, so files
+  created by shell commands on the PC travel too. Same exclusions and limits, plus a walk cap of 20000
+  files (`walk-limit` in `skipped`), junctions and symlinks are not followed, and conflict copies
+  (`*.przed-importem-*`) stay where they were made (`transfer-copy`). Measured on real projects: PS5
+  (280 MB on disk) gives 289 files, 29 MB, an 11 MB ZIP in 1.4 s.
 - **Return trip (phase 2)**, capability `workspace-files-return` (only while session sync is enabled):
   before handing writing back, the phone sends the files it changed or created since the last transfer
   (`diffAgainstBase` against its stored sums, so files made by shell commands come too) to
