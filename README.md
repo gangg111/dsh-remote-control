@@ -149,7 +149,7 @@ mixed versions degrade instead of breaking.
 |---|---|---|
 | Remote control (sessions, history, messages, photos) | 0.1.2+ | 1.1.0+ |
 | Session transfer both ways | 0.2.0+ | 1.2.0+ |
-| Session sync (owner and read-only mirror, takeover) | 0.3.1+ | 1.3.0+ |
+| Session sync (owner and read-only mirror, takeover) | 0.3.1+ | 1.2.0+ (build 60+, the APK replaced in the 1.2.0 release on 2026-10-08) |
 | Project files with a session, whole-project scope, file return and pull with acknowledgement, transfer progress | 0.7.0+ (0.7.1 recommended) | 1.3.0+ |
 
 An older phone (before 1.3.0) still transfers sessions, without project files or progress. Session sync
