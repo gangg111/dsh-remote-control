@@ -99,7 +99,7 @@ test('info: workspace-files-return tylko przy wlaczonej synchronizacji', async (
     await api(req, res, new URL('/__remote/api/info', 'http://x')); req.end()
     return JSON.parse(res.body).capabilities
   }
-  assert.ok((await info(true)).includes('workspace-files-return')); assert.ok((await info(true)).includes('workspace-files-pull'))
+  assert.ok((await info(true)).includes('workspace-files-return')); assert.ok((await info(true)).includes('workspace-files-pull')); assert.ok((await info(true)).includes('workspace-files-pull-ack'))
   assert.ok(!(await info(false)).includes('workspace-files-return'))
 })
 
@@ -144,4 +144,62 @@ test('pobranie przez telefon: tylko pliki z bazy i agenta zmienione od bazy, usu
   assert.equal(res2.headers['x-dsh-files'], '0')
   assert.equal(res2.headers['x-dsh-files-deleted'], '0', 'usuniety zgloszony tylko raz')
   assert.equal(fileBase.get(pcRoot)['usuniety.txt'], undefined)
+})
+
+test('pobranie z ack: baza czeka na potwierdzenie; telefon, ktory padl po GET, dostaje pliki ponownie', async () => {
+  const pcRoot = tmp('ack-pc-')
+  put(pcRoot, 'a.txt', 'a v3 z PC')
+  put(pcRoot, 'b.txt', 'b nowe na PC')
+  const services = { sessionQuery: { observeSession: async (id) => ({ header: { id, cwd: pcRoot }, events: [], [Symbol.dispose]() {} }) } }
+  const links = createLinks(join(tmp('ack-links-'), 'links.json'))
+  const fileBase = createFileBase(join(tmp('ack-base-'), 'filebase.json'))
+  fileBase.merge(pcRoot, [{ path: 'a.txt', sha256: sha('a v2') }, { path: 'b.txt', sha256: sha('b stare') }, { path: 'zniknal.txt', sha256: sha('z') }])
+  const api = createLinkApi({ get: (n) => services[n], links, enabled: true, fileBase })
+  const link = links.create({ pcSessionId: 'pc', phoneSessionId: 'tel', owner: 'phone', sharedCount: 3 })
+  const get = async (q) => {
+    const req = new PassThrough(); req.method = 'GET'
+    const res = { headers: null, body: null, writeHead(s, h) { this.headers = h }, end(b) { this.body = b } }
+    const p = `/links/${link.linkId}/files`
+    await api.phone(req, res, p, new URL(p + q, 'http://x'))
+    return res
+  }
+  const ack = (body) => {
+    const req = new PassThrough(); req.method = 'POST'
+    const res = { status: 0, body: null, writeHead(s) { this.status = s }, end(b) { this.body = b } }
+    const p = `/links/${link.linkId}/files-applied`
+    const done = api.phone(req, res, p, new URL(p, 'http://x'))
+    req.end(JSON.stringify(body))
+    return done.then(() => ({ status: res.status, json: JSON.parse(res.body) }))
+  }
+  const { readWorkspaceZip } = await import('../lib/workspace-files.js')
+
+  const first = await get('?ack=1')
+  const id1 = first.headers['x-dsh-files-id']
+  assert.equal(readWorkspaceZip(first.body).manifest.pullId, id1)
+  assert.equal(first.headers['x-dsh-files'], '2')
+  assert.equal(fileBase.get(pcRoot)['a.txt'], sha('a v2'), 'baza bez zmian przed potwierdzeniem')
+
+  // Telefon padl przed zastosowaniem: ponowne pobranie zwraca te same pliki z nowym id, stare id jest niewazne.
+  const again = await get('?ack=1')
+  const id2 = again.headers['x-dsh-files-id']
+  assert.equal(again.headers['x-dsh-files'], '2')
+  assert.notEqual(id2, id1)
+  assert.equal((await ack({ pullId: id1, applied: ['a.txt'] })).status, 409)
+
+  // Zastosowany tylko a.txt (np. b.txt pominiety): do bazy trafia tylko a.txt, zniknal.txt wypada.
+  const ok = await ack({ pullId: id2, applied: ['a.txt', 'nie-z-tego-pobrania.txt'] })
+  assert.deepEqual([ok.status, ok.json.merged], [200, 1])
+  const baseNow = fileBase.get(pcRoot)
+  assert.equal(baseNow['a.txt'], sha('a v3 z PC'))
+  assert.equal(baseNow['b.txt'], sha('b stare'))
+  assert.equal(baseNow['zniknal.txt'], undefined)
+  assert.equal((await ack({ pullId: id2, applied: ['a.txt'] })).status, 409, 'potwierdzenie tylko raz')
+
+  // Nastepne pobranie: tylko b.txt, ktorego telefon nie potwierdzil.
+  const next = await get('?ack=1')
+  assert.deepEqual(readWorkspaceZip(next.body).manifest.files.map((f) => f.path), ['b.txt'])
+
+  // Bez ack (stare telefony): baza aktualizowana od razu, jak dotad.
+  await get('')
+  assert.equal(fileBase.get(pcRoot)['b.txt'], sha('b nowe na PC'))
 })

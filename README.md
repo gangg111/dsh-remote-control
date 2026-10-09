@@ -86,6 +86,10 @@ project files alongside the session. `info` advertises `capabilities: ["workspac
   calls `GET /__remote/api/links/<id>/files` and gets the PC files changed since the last transfer.
   Candidates are the files in the sum store plus the files the agent changed through its tools in the
   PC session, not the whole project directory; files gone from the PC are listed in `deleted` once.
+  With `?ack=1` (capability `workspace-files-pull-ack`) the sums wait for
+  `POST /__remote/api/links/<id>/files-applied` `{ pullId, applied }` (`pullId` from the `x-dsh-files-id`
+  header and `manifest.pullId`); only the applied paths enter the store, so a phone that died before
+  applying gets the same files again. A newer pull replaces the waiting one.
 - **Exclusions** (both directions): build and dependency directories (`.git`, `node_modules`, `bin`,
   `obj`, `build`, `dist`, `target`, `.venv`, …) and files that are useless on the other side or
   sensitive (`.exe`, `.dll`, `.pfx`, `.key`, `.pem`, `.env`, `.keystore`, …). Excluded files go on the
