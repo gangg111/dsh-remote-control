@@ -21,6 +21,7 @@ import { installArchiveGuard } from './lib/archive-guard.js'
 import { superviseTsnet } from './lib/embedded.js'
 import { createGateway } from './lib/gateway.js'
 import { createLinkApi } from './lib/link-api.js'
+import { createFileBase } from './lib/file-base.js'
 import { createLinks } from './lib/links.js'
 import { createOutbox } from './lib/outbox.js'
 import * as tailscale from './lib/tailscale.js'
@@ -83,8 +84,9 @@ export function apply(ctx, config = {}) {
   const links = createLinks(join(home, 'remote-control-links.json'))
   const dshVersion = readDshVersion()
   const syncEnabled = SYNC_TESTED_DSH.includes(dshVersion)
+  const fileBase = createFileBase(join(home, 'remote-control-filebase.json'))
   const linkApi = createLinkApi({
-    get: (service) => ctx.get(service), links, log, enabled: syncEnabled,
+    get: (service) => ctx.get(service), links, log, enabled: syncEnabled, fileBase,
     disabledReason: `Synchronizacja sesji nie jest sprawdzona na DSH ${dshVersion ?? '(nieznana wersja)'}; wylaczona do aktualizacji wtyczki.`,
   })
 
@@ -155,6 +157,7 @@ export function apply(ctx, config = {}) {
         removeSession,
         dshVersion,
         linkApi,
+        fileBase,
         syncEnabled,
       }),
       log,

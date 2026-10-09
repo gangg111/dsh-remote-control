@@ -71,7 +71,17 @@ project files alongside the session. `info` advertises `capabilities: ["workspac
   against a base manifest (phase 2, the return trip); `safeRelSegments` rejects absolute paths, `..`,
   drive letters and Windows reserved names.
 - **Phase 1 scope** is `agent`: only files the agent changed through its tools, inside the session's
-  `cwd`. The whole-project scope and the return trip (diff against the manifest) are phase 2.
+  `cwd`. The whole-project scope is still to come.
+- **Return trip (phase 2)**, capability `workspace-files-return` (only while session sync is enabled):
+  before handing writing back, the phone sends the files it changed or created since the last transfer
+  (`diffAgainstBase` against its stored sums, so files made by shell commands come too) to
+  `POST /__remote/api/links/<id>/files` (ZIP body, limit 80 MB, only while the phone owns the link).
+  The PC writes them into the `cwd` of the linked PC session, not into a path from the manifest; a
+  `returnTo.root` naming another directory is refused with 409 and nothing is written. The PC keeps the
+  sums of files that crossed in either direction per project directory
+  (`~/.dsh/remote-control-filebase.json`): a PC file still matching that sum was not edited since and
+  is replaced without a copy; a file changed on the PC as well gets a `*.przed-importem-*` copy.
+  Files deleted on the phone are only listed (`deleted`), the PC deletes nothing.
 - **Exclusions** (both directions): build and dependency directories (`.git`, `node_modules`, `bin`,
   `obj`, `build`, `dist`, `target`, `.venv`, …) and files that are useless on the other side or
   sensitive (`.exe`, `.dll`, `.pfx`, `.key`, `.pem`, `.env`, `.keystore`, …). Excluded files go on the
