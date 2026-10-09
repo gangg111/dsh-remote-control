@@ -138,6 +138,25 @@ phone is the courier.
   the phone can show progress too. Session import (`POST /sessions/import`) is not shown: the PC session
   does not exist until the import ends.
 
+### Compatibility
+
+The phone side is the Code screen of
+[DeepSeek Harness Mobile](https://github.com/gangg111/DeepSeek-Harness-Mobile). Every feature is
+announced in `GET /__remote/api/info` (`capabilities`) and the phone uses only what the PC announces, so
+mixed versions degrade instead of breaking.
+
+| Feature | dsh-remote-control | DSH Mobile |
+|---|---|---|
+| Remote control (sessions, history, messages, photos) | 0.1.2+ | 1.1.0+ |
+| Session transfer both ways | 0.2.0+ | 1.2.0+ |
+| Session sync (owner and read-only mirror, takeover) | 0.3.1+ | 1.3.0+ |
+| Project files with a session, whole-project scope, file return and pull with acknowledgement, transfer progress | 0.7.0+ (0.7.1 recommended) | 1.3.0+ |
+
+An older phone (before 1.3.0) still transfers sessions, without project files or progress. Session sync
+(linked copies) is enabled only on DSH versions where the takeover test passed (`SYNC_TESTED_DSH` in
+`index.js`, currently 0.2.0-rc.2); on another DSH version the sync routes answer 503 and sessions still
+transfer.
+
 ### Installation
 
 1. In DSH on the computer: Plugins, Add plugin from GitHub: `gangg111/dsh-remote-control`.
