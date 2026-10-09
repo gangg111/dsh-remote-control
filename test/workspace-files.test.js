@@ -1,7 +1,7 @@
 // Pliki projektu przenoszone z sesja: zbieranie, pakowanie, zastosowanie, konflikty, wykluczenia.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, statSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -144,4 +144,42 @@ test('diffAgainstBase: nowe, zmienione i usuniete wzgledem manifestu', () => {
   const rels = paths.map((p) => p.replaceAll('\\', '/').split('/').at(-1)).sort()
   assert.deepEqual(rels, ['added.txt', 'changed.txt'])
   assert.deepEqual(deleted, ['removed.txt'])
+})
+
+test('apply: plik w tree bez wpisu w manifescie odrzucony jako undeclared', () => {
+  const manifest = { version: 1, origin: {}, scope: 'agent', files: [], skipped: [] }
+  const zip = writeZip([['manifest.json', Buffer.from(JSON.stringify(manifest))], ['tree/obcy.txt', Buffer.from('x')]])
+  const dst = tmp('wf-undecl-')
+  const { report } = applyWorkspaceZip({ root: dst, zip })
+  assert.equal(report.skipped.find((s) => s.path === 'obcy.txt').reason, 'undeclared')
+  assert.equal(existsSync(join(dst, 'obcy.txt')), false)
+})
+
+test('exec: skrypt z #! oznaczony w manifescie, po zastosowaniu poza Windows ma bit wykonywania', () => {
+  const src = tmp('wf-exec-')
+  const sh = put(src, 'run.sh', '#!/bin/sh\necho ok\n')
+  const txt = put(src, 'notes.txt', 'tekst')
+  const { zip, manifest } = packWorkspaceZip({ root: src, scope: 'agent', paths: [sh, txt], origin: {} })
+  const byPath = Object.fromEntries(manifest.files.map((f) => [f.path, f]))
+  assert.equal(byPath['run.sh'].exec, true)
+  assert.equal(byPath['notes.txt'].exec, undefined)
+  const dst = tmp('wf-exec-dst-')
+  const { report } = applyWorkspaceZip({ root: dst, zip })
+  assert.deepEqual(report.created.sort(), ['notes.txt', 'run.sh'])
+  if (process.platform !== 'win32') {
+    assert.notEqual(statSync(join(dst, 'run.sh')).mode & 0o111, 0)
+    assert.equal(statSync(join(dst, 'notes.txt')).mode & 0o111, 0)
+  }
+})
+
+test('apply: dowiazanie na sciezce (katalog posredni) pomija zapis', () => {
+  const src = tmp('wf-link-src-')
+  const p = put(src, 'lib/x.txt', 'X')
+  const { zip } = packWorkspaceZip({ root: src, scope: 'agent', paths: [p], origin: {} })
+  const dst = tmp('wf-link-dst-')
+  const outside = tmp('wf-link-outside-')
+  symlinkSync(outside, join(dst, 'lib'), 'junction')
+  const { report } = applyWorkspaceZip({ root: dst, zip })
+  assert.equal(report.skipped.find((s) => s.path === 'lib/x.txt').reason, 'symlink-in-path')
+  assert.deepEqual(readdirSync(outside), [])
 })
