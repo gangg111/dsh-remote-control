@@ -5,7 +5,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough, Writable } from 'node:stream'
-import { createActivity, sendBuffer } from '../lib/activity.js'
+import { createActivity, lazyHandle, sendBuffer } from '../lib/activity.js'
 import { createFileBase } from '../lib/file-base.js'
 import { createLinkApi } from '../lib/link-api.js'
 import { createLinks } from '../lib/links.js'
@@ -58,4 +58,17 @@ test('zwrot plikow z telefonu liczy odbierane bajty dla sesji PC', async () => {
   await done
   assert.equal(res.status, 200)
   assert.deepEqual(activity.list(), [{ sessionId: 'pc-1', direction: 'in', bytes: zip.length, total: zip.length, done: true }])
+})
+
+test('lazyHandle: wpis dopiero po progu, liczy tez bajty sprzed progu, bez content-length', () => {
+  const a = createActivity()
+  const h = lazyHandle(() => a.start('s', 'in', NaN), 512)
+  h.add(300)
+  assert.equal(a.list().length, 0, 'ponizej progu nic')
+  h.add(300)
+  assert.deepEqual(a.list(), [{ sessionId: 's', direction: 'in', bytes: 600, total: null, done: false }])
+  h.end()
+  const empty = lazyHandle(() => a.start('pusty', 'in'), 512)
+  empty.add(200); empty.end()
+  assert.equal(a.list().some((i) => i.sessionId === 'pusty'), false)
 })
