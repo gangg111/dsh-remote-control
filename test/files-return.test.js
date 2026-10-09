@@ -99,6 +99,49 @@ test('info: workspace-files-return tylko przy wlaczonej synchronizacji', async (
     await api(req, res, new URL('/__remote/api/info', 'http://x')); req.end()
     return JSON.parse(res.body).capabilities
   }
-  assert.ok((await info(true)).includes('workspace-files-return'))
+  assert.ok((await info(true)).includes('workspace-files-return')); assert.ok((await info(true)).includes('workspace-files-pull'))
   assert.ok(!(await info(false)).includes('workspace-files-return'))
+})
+
+test('pobranie przez telefon: tylko pliki z bazy i agenta zmienione od bazy, usuniete na liscie, baza zaktualizowana', async () => {
+  const pcRoot = tmp('pull-pc-')
+  put(pcRoot, 'a.txt', 'a zmienione na PC')
+  put(pcRoot, 'same.txt', 'bez zmian')
+  const c = put(pcRoot, 'nowy/c.txt', 'c od agenta')
+  put(pcRoot, 'obcy.bin', 'reszta projektu, nie przenoszona')
+  const events = [{ type: 'tool/call', data: { name: 'write', arguments: JSON.stringify({ file_path: c }) } }]
+  const services = { sessionQuery: { observeSession: async (id) => ({ header: { id, cwd: pcRoot }, events, [Symbol.dispose]() {} }) } }
+  const links = createLinks(join(tmp('pull-links-'), 'links.json'))
+  const fileBase = createFileBase(join(tmp('pull-base-'), 'filebase.json'))
+  fileBase.merge(pcRoot, [
+    { path: 'a.txt', sha256: sha('a stare') },
+    { path: 'same.txt', sha256: sha('bez zmian') },
+    { path: 'usuniety.txt', sha256: sha('byl') },
+  ])
+  const api = createLinkApi({ get: (n) => services[n], links, enabled: true, fileBase })
+  const link = links.create({ pcSessionId: 'pc', phoneSessionId: 'tel', owner: 'phone', sharedCount: 3 })
+
+  const req = new PassThrough(); req.method = 'GET'
+  const res = { status: 0, headers: null, body: null, writeHead(s, h) { this.status = s; this.headers = h }, end(b) { this.body = b } }
+  await api.phone(req, res, `/links/${link.linkId}/files`, new URL(`/links/${link.linkId}/files`, 'http://x'))
+  req.end()
+  assert.equal(res.status, 200)
+  const { readWorkspaceZip } = await import('../lib/workspace-files.js')
+  const { manifest, tree } = readWorkspaceZip(res.body)
+  assert.deepEqual(manifest.files.map((f) => f.path).sort(), ['a.txt', 'nowy/c.txt'])
+  assert.deepEqual(manifest.deleted, ['usuniety.txt'])
+  assert.equal(manifest.origin.device, 'pc')
+  assert.equal(tree.get('a.txt').toString(), 'a zmienione na PC')
+  assert.equal(fileBase.get(pcRoot)['a.txt'], sha('a zmienione na PC'))
+
+  // Telefon stosuje to u siebie i drugi raz nie ma nic nowego.
+  const dst = tmp('pull-phone-')
+  const { applyWorkspaceZip } = await import('../lib/workspace-files.js')
+  assert.deepEqual(applyWorkspaceZip({ root: dst, zip: res.body }).report.created.sort(), ['a.txt', 'nowy/c.txt'])
+  const req2 = new PassThrough(); req2.method = 'GET'
+  const res2 = { headers: null, body: null, writeHead(s, h) { this.headers = h }, end(b) { this.body = b } }
+  await api.phone(req2, res2, `/links/${link.linkId}/files`, new URL(`/links/${link.linkId}/files`, 'http://x'))
+  assert.equal(res2.headers['x-dsh-files'], '0')
+  assert.equal(res2.headers['x-dsh-files-deleted'], '0', 'usuniety zgloszony tylko raz')
+  assert.equal(fileBase.get(pcRoot)['usuniety.txt'], undefined)
 })

@@ -82,6 +82,10 @@ project files alongside the session. `info` advertises `capabilities: ["workspac
   (`~/.dsh/remote-control-filebase.json`): a PC file still matching that sum was not edited since and
   is replaced without a copy; a file changed on the PC as well gets a `*.przed-importem-*` copy.
   Files deleted on the phone are only listed (`deleted`), the PC deletes nothing.
+- **Pull after a takeover**, capability `workspace-files-pull`: after the phone takes over writing it
+  calls `GET /__remote/api/links/<id>/files` and gets the PC files changed since the last transfer.
+  Candidates are the files in the sum store plus the files the agent changed through its tools in the
+  PC session, not the whole project directory; files gone from the PC are listed in `deleted` once.
 - **Exclusions** (both directions): build and dependency directories (`.git`, `node_modules`, `bin`,
   `obj`, `build`, `dist`, `target`, `.venv`, …) and files that are useless on the other side or
   sensitive (`.exe`, `.dll`, `.pfx`, `.key`, `.pem`, `.env`, `.keystore`, …). Excluded files go on the
