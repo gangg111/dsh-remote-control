@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createActivity } from './lib/activity.js'
 import { createApi } from './lib/api.js'
 import { installArchiveGuard } from './lib/archive-guard.js'
 import { superviseTsnet } from './lib/embedded.js'
@@ -85,8 +86,9 @@ export function apply(ctx, config = {}) {
   const dshVersion = readDshVersion()
   const syncEnabled = SYNC_TESTED_DSH.includes(dshVersion)
   const fileBase = createFileBase(join(home, 'remote-control-filebase.json'))
+  const activity = createActivity()
   const linkApi = createLinkApi({
-    get: (service) => ctx.get(service), links, log, enabled: syncEnabled, fileBase,
+    get: (service) => ctx.get(service), links, log, enabled: syncEnabled, fileBase, activity,
     disabledReason: `Synchronizacja sesji nie jest sprawdzona na DSH ${dshVersion ?? '(nieznana wersja)'}; wylaczona do aktualizacji wtyczki.`,
   })
 
@@ -128,6 +130,7 @@ export function apply(ctx, config = {}) {
       const path = url.pathname.slice(UI_PREFIX.length)
       try {
         if (req.method === 'GET' && path === '/outbox') return sendJson(res, 200, { items: outbox.list() })
+        if (req.method === 'GET' && path === '/activity') return sendJson(res, 200, { items: activity.list() })
         if (req.method === 'POST' && path === '/outbox') {
           const body = JSON.parse((await readSmallBody(req)) || '{}')
           return sendJson(res, 200, outbox.add(body.sessionId, body.title))
@@ -158,6 +161,7 @@ export function apply(ctx, config = {}) {
         dshVersion,
         linkApi,
         fileBase,
+        activity,
         syncEnabled,
       }),
       log,

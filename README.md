@@ -130,6 +130,13 @@ phone is the courier.
 - **On the PC:** the session row icon shows "you write here" or "mirror of the phone"; a mirror has its
   composer blocked and a "Take over writing here" bar (the phone hands over after finishing its turn; after
   a minute the PC may take over without it). A paused link shows its reason and a "Resume sync" button.
+- **Transfer activity:** every route that moves data (session export, project files, sync tails, file
+  return) counts bytes per PC session (`lib/activity.js`, UI route `GET /api/dsh-remote-control/activity`,
+  polled every second). The session row icon then shows an arrow moving into the phone (sending) or out of
+  it (receiving), with a progress bar inside the phone when the size is known, and the percentage in its
+  tooltip; a system "reduce motion" setting keeps the arrow still. Responses carry `content-length`, so
+  the phone can show progress too. Session import (`POST /sessions/import`) is not shown: the PC session
+  does not exist until the import ends.
 
 ### Installation
 
