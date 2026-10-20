@@ -164,6 +164,12 @@ such a session sent from a 0.2.1 PC fails to import on a 0.2.0 phone (the import
 a sync tail carrying them would be stored in the live 0.2.0 session and make it unreadable after a
 restart.
 
+The PC enforces it (capability `dsh-version-check`): the phone sends its DSH version (the version of
+`@deepseek-ai/dsh`) in the `x-dsh-version` header, and the sync routes that move events or files
+(creating a link, tails both ways, applied marks, claims, project files) answer 409 with `pcVersion`
+and `phoneVersion` when it differs from the PC's DSH version or is missing. Listing, unlinking, pausing
+and resuming stay open.
+
 ### Installation
 
 1. In DSH on the computer: Plugins, Add plugin from GitHub: `gangg111/dsh-remote-control`.

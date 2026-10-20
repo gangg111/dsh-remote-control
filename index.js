@@ -88,7 +88,7 @@ export function apply(ctx, config = {}) {
   const fileBase = createFileBase(join(home, 'remote-control-filebase.json'))
   const activity = createActivity()
   const linkApi = createLinkApi({
-    get: (service) => ctx.get(service), links, log, enabled: syncEnabled, fileBase, activity,
+    get: (service) => ctx.get(service), links, log, enabled: syncEnabled, fileBase, activity, dshVersion,
     disabledReason: `Synchronizacja sesji nie jest sprawdzona na DSH ${dshVersion ?? '(nieznana wersja)'}; wylaczona do aktualizacji wtyczki.`,
   })
 
