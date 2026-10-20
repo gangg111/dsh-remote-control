@@ -126,7 +126,7 @@ phone is the courier.
   (emitted before `turn/start` is written) stops any turn of a mirror, and any owner turn whose number is
   not the last logged turn + 1; the link is then paused (`paused` in the link, `POST /links/<id>/resume`).
   Both rely on agent internals, so sync is enabled only on DSH versions where the takeover test passed
-  (`SYNC_TESTED_DSH` in `index.js`, currently 0.2.0-rc.2); on others the write routes return 503.
+  (`SYNC_TESTED_DSH` in `index.js`, currently 0.2.0-rc.2 and 0.2.1-rc.2); on others the write routes return 503.
 - **On the PC:** the session row icon shows "you write here" or "mirror of the phone"; a mirror has its
   composer blocked and a "Take over writing here" bar (the phone hands over after finishing its turn; after
   a minute the PC may take over without it). A paused link shows its reason and a "Resume sync" button.
@@ -154,8 +154,15 @@ mixed versions degrade instead of breaking.
 
 An older phone (before 1.3.0) still transfers sessions, without project files or progress. Session sync
 (linked copies) is enabled only on DSH versions where the takeover test passed (`SYNC_TESTED_DSH` in
-`index.js`, currently 0.2.0-rc.2); on another DSH version the sync routes answer 503 and sessions still
+`index.js`, currently 0.2.0-rc.2 and 0.2.1-rc.2); on another DSH version the sync routes answer 503 and sessions still
 transfer.
+
+Keep the same DSH version on both devices. A newer DSH writes session events an older one does not
+know: 0.2.1 adds `working-directory/change` (in every session once a tool runs) and `job/registered` /
+`job/settled`, none of them marked ignorable. DSH 0.2.0 refuses to load a session containing them, so
+such a session sent from a 0.2.1 PC fails to import on a 0.2.0 phone (the import is rolled back), and
+a sync tail carrying them would be stored in the live 0.2.0 session and make it unreadable after a
+restart.
 
 ### Installation
 

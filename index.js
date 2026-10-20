@@ -41,7 +41,7 @@ const OWNER_CACHE_MS = 60_000
  * opieraja sie na wnetrzu agenta DSH (licznik tur w `phase`), wiec na innej wersji synchronizacja
  * jest wylaczona, dopoki test nie przejdzie i wersja nie trafi na te liste.
  */
-const SYNC_TESTED_DSH = ['0.2.0-rc.2']
+const SYNC_TESTED_DSH = ['0.2.0-rc.2', '0.2.1-rc.2']
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url))
 
 /**
