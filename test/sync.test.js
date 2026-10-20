@@ -56,6 +56,42 @@ test('remapSeqRefs: wszystkie znane pola, straznik nieznanego pola', () => {
   assert.throws(() => remapSeqRefs({ type: 'x', seq: 1, data: { parentSeq: 2 } }, (o) => o), (err) => err.status === 409 && /parentSeq/.test(err.message))
 })
 
+test('remapSeqRefs: shadowedRange i image/offload targets; straznik liczb w obiektach *Range', () => {
+  const summary = { type: 'compaction/summary', seq: 20, time: 1, data: { shadowedRange: { start: 3, end: 5 }, shadowedSeqs: [3, 4, 5], shadowedTokenCount: 900 } }
+  const out = remapSeqRefs(summary, (o) => o + 100)
+  assert.deepEqual(out.data.shadowedRange, { start: 103, end: 105 })
+  assert.equal(out.data.shadowedTokenCount, 900)
+  const offload = remapSeqRefs({ type: 'image/offload', seq: 21, time: 1, data: { targets: [{ seq: 7, index: 0 }, { seq: 8, index: 2 }] } }, (o) => o + 100)
+  assert.deepEqual(offload.data.targets, [{ seq: 107, index: 0 }, { seq: 108, index: 2 }])
+  const guard = (data) => assert.throws(() => remapSeqRefs({ type: 'x', seq: 1, data }, (o) => o), (err) => err.status === 409)
+  guard({ visibleRange: { start: 1, end: 2 } })
+  guard({ shadowedRange: { start: 1, end: 2, middle: 1 } })
+})
+
+test('appendTail: kompakcja w srodku powierzchni z lokalnymi zdarzeniami lustra w zakresie przechodzi regule span DSH', async () => {
+  const msg = (seq, text) => ({ type: 'user/message', seq, time: 1, surfaceOp: 'append', data: { text } })
+  // Powierzchnia wlasciciela: 0..5. Lustro ma te same wiadomosci, ale z lokalnymi tytulami miedzy nimi.
+  const owner = [msg(0, 'a'), msg(1, 'b'), msg(2, 'c'), msg(3, 'd'), msg(4, 'e'), msg(5, 'f'),
+    { type: 'compaction/summary', seq: 6, time: 1, data: { shadowedRange: { start: 2, end: 4 }, shadowedSeqs: [2, 3, 4] } },
+    { type: 'user/message', seq: 7, time: 1, surfaceOp: { op: 'replace', startSeq: 2, endSeq: 4 }, sourceEventSeqs: [6, 2, 3, 4], data: { text: 'podsumowanie' } }]
+  const title = (seq) => ({ type: 'session/title', seq, time: 1, data: { text: 't' } })
+  const mirror = [msg(0, 'a'), msg(1, 'b'), msg(2, 'c'), title(3), msg(4, 'd'), title(5), msg(6, 'e'), msg(7, 'f')]
+  const map = new SeqMap([[0, 0, 3], [3, 4, 1], [4, 6, 2]])
+  const zip = (await import('../lib/zipwrite.js')).writeZip([['tail.jsonl', owner.slice(6).map((e) => JSON.stringify(e)).join('\n') + '\n']])
+  const dsh = fakeDsh({ mirror })
+  const r = await appendTail(dsh.get, 'mirror', zip, (o) => map.toPhone(o))
+  assert.equal(r.error, undefined)
+  const events = dsh.sessions.get('mirror').events
+  const summary = events.find((e) => e.type === 'compaction/summary')
+  // Regula z dsh-session-format-v3-to-v4 `span`: powierzchnia od start do end == shadowedSeqs.
+  const surface = events.filter((e) => e.surfaceOp === 'append' && e.seq < summary.seq).map((e) => e.seq)
+  const { start, end } = summary.data.shadowedRange
+  assert.deepEqual(surface.slice(surface.indexOf(start), surface.indexOf(end) + 1), summary.data.shadowedSeqs)
+  assert.deepEqual(summary.data.shadowedSeqs, [2, 4, 6])
+  const replace = events.at(-1)
+  assert.deepEqual([replace.surfaceOp.startSeq, replace.surfaceOp.endSeq], [2, 6])
+})
+
 test('latestBoundary: ostatni turn/end plus samodzielne zdarzenia do nastepnej tury', () => {
   const ev = [...turn(0, 1), { type: 'session/title', seq: 5, time: 1, data: {} }, { type: 'turn/start', seq: 6, time: 1, data: { turn: 2 } }]
   assert.equal(latestBoundary(ev), 5)
